@@ -30,17 +30,23 @@ class LogMagFrequencyLoss(torch.nn.Module):
             # first compute the target response
             w, target_h = signal.sosfreqz(target, log=False)
             target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
+            target_phs = torch.angle(target_h) # atan2(imaginary_part, real_part) equivalent
 
             n_sections = input.shape[1]
             mag_loss = 0
+            phs_loss = 0
             # now compute error with each group of biquads
             for n in np.arange(n_sections, step=2):
 
                 sos = input[:, 0 : n + 2, :]
                 w, input_h = signal.sosfreqz(sos, log=False)
                 input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
+                input_phs = torch.angle(input_h)
 
                 mag_loss += torch.nn.functional.mse_loss(input_mag, target_mag)
+                phs_loss += torch.nn.functional.mse_loss(input_phs, target_phs)
+
+            loss = mag_loss + phs_loss
 
         else:
             w, input_h = signal.sosfreqz(input, log=False)
@@ -48,10 +54,15 @@ class LogMagFrequencyLoss(torch.nn.Module):
 
             input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
             target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
+            input_phs = torch.angle(input_h)
+            target_phs = torch.angle(target_h)
 
             mag_loss = torch.nn.functional.mse_loss(input_mag, target_mag)
+            phs_loss = torch.nn.functional.mse_loss(input_phs, target_phs)
 
-        return mag_loss
+            loss = mag_loss + phs_loss
+
+        return loss
 
 
 class FreqDomainLoss(torch.nn.Module):
@@ -71,18 +82,22 @@ class FreqDomainLoss(torch.nn.Module):
 
         input_mag = signal.mag(input_h)
         target_mag = signal.mag(target_h)
+        input_phs = torch.angle(input_h)
+        target_phs = torch.angle(target_h)
 
         input_mag_log = torch.log(input_mag)
         target_mag_log = torch.log(target_mag)
 
         if error == "l1":
             mag_log_loss = torch.nn.functional.l1_loss(input_mag_log, target_mag_log)
+            phs_loss = torch.nn.functional.l1_loss(input_phs, target_phs)
         elif error == "l2":
             mag_log_loss = torch.nn.functional.mse_loss(input_mag_log, target_mag_log)
+            phs_loss = torch.nn.functional.mse_loss(input_phs, target_phs)
         else:
-            raise RuntimeError(f"Invalid `error`: {error}.")
+            raise RuntimeError(f"Invalid `error`: {error}.)
 
-        return mag_log_loss
+        return mag_log_loss + phs_loss
 
 
 class LogMagTargetFrequencyLoss(torch.nn.Module):
@@ -96,10 +111,12 @@ class LogMagTargetFrequencyLoss(torch.nn.Module):
 
         w, input_h = signal.sosfreqz(input_sos, worN=target_mag.shape[-1], log=False)
         input_mag = 20 * torch.log10(signal.mag(input_h) + eps).float()
+        input_phs = torch.angle(input_h)
 
         mag_loss = torch.nn.functional.mse_loss(input_mag, target_mag)
+        phs_loss = torch.nn.functional.mse_loss(input_phs, target_mag)
 
-        return mag_loss
+        return mag_loss + phs_loss
 
 
 class ComplexLoss(torch.nn.Module):
@@ -132,7 +149,8 @@ class ComplexLoss(torch.nn.Module):
             w, target_h = signal.sosfreqz(target, log=False)
             real_loss = torch.nn.functional.mse_loss(input_h.real, target_h.real)
             imag_loss = torch.nn.functional.mse_loss(input_h.imag, target_h.imag)
-            loss = real_loss + imag_loss
+            phs_loss = torch.nn.functional.mse_loss(torch.angle(input_h), torch.angle(target_h))
+            loss = real_loss + imag_loss + phs_loss
 
         return torch.mean(loss)
 

@@ -49,6 +49,7 @@ class IIRNet(pl.LightningModule):
             "pred_sos": pred_sos.cpu(),
             "sos": sos.cpu(),
             "mag_dB": mag_dB.cpu(),
+            "phs": phs.cpu(),  # Log the phase response
             "z": zpk[0].cpu(),
             "p": zpk[1].cpu(),
             "k": zpk[2].cpu(),
