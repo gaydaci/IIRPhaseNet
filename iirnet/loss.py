@@ -95,7 +95,7 @@ class FreqDomainLoss(torch.nn.Module):
             mag_log_loss = torch.nn.functional.mse_loss(input_mag_log, target_mag_log)
             phs_loss = torch.nn.functional.mse_loss(input_phs, target_phs)
         else:
-            raise RuntimeError(f"Invalid `error`: {error}.)
+            raise RuntimeError(f"Invalid `error`: {error}.")
 
         return mag_log_loss + phs_loss
 
