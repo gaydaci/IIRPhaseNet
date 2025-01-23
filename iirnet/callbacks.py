@@ -57,6 +57,6 @@ class LogTransferFnPlots(Callback):
 
             trainer.logger.experiment.add_image(
                 f"mag-grid/{batch_idx+1}",
-                plot_response_grid(pred_sos, target_coefs=sos),
+                plot_response_grid(pred_sos, target_coefs=sos, num_points=1024),
                 trainer.global_step,
             )

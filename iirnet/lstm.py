@@ -24,14 +24,15 @@ class LSTMModel(IIRNet):
 
     def forward(self, mag, phs=None):
         
-        mag = mag.unsqueeze(-1) # add sequence dim
-        # create a sequence of max length 
-        seq = mag.permute(2,0,1)
-        seq = seq.repeat(self.hparams.max_order//2,1,1)
+        mag = mag.unsqueeze(-1)  # add sequence dim
+        phs = phs.unsqueeze(-1)  # add sequence dim
+        seq = torch.cat((mag, phs), dim=2)  # Concatenate magnitude and phase
+        seq = seq.permute(2, 0, 1)
+        seq = seq.repeat(self.hparams.max_order // 2, 1, 1)
 
         out, _ = self.lstm(seq)
         out = self.output(out)
-        sos = out.permute(1,0,2)
+        sos = out.permute(1, 0, 2)
 
         return sos
 

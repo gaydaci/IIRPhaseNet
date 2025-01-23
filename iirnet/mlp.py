@@ -24,14 +24,13 @@ class MLPModel(IIRNet):
         self.save_hyperparameters()
 
         self.layers = torch.nn.ModuleList()
-        # print(f"Layers: {num_layers+1}")
+        input_dim = num_points * 2  # 512 for magnitude + 512 for phase
 
         for n in range(self.hparams.num_layers):
-            in_features = self.hparams.hidden_dim if n != 0 else self.hparams.num_points
+            in_features = self.hparams.hidden_dim if n != 0 else input_dim
             out_features = self.hparams.hidden_dim
             if n + 1 == self.hparams.num_layers:  # no activation at last layer
                 linear_layer = torch.nn.Linear(in_features, out_features)
-                # linear_layer.bias.data.fill_(0.5)
                 self.layers.append(linear_layer)
             else:
                 self.layers.append(
@@ -46,10 +45,13 @@ class MLPModel(IIRNet):
         self.layers.append(torch.nn.Linear(out_features, n_coef))
 
         if self.hparams.normalization == "bn":
-            self.bn = torch.nn.BatchNorm1d(self.hparams.num_points * 2)
+            self.bn = torch.nn.BatchNorm1d(input_dim)
 
-    def forward(self, mag, phs=None):
-        x = mag
+    def forward(self, mag, phs):
+        x = torch.cat((mag, phs), dim=1)  # Concatenate magnitude and phase
+
+        if self.hparams.normalization == "bn":
+            x = self.bn(x)
 
         for layer in self.layers:
             x = layer(x)

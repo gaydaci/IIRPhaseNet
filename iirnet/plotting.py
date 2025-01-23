@@ -113,15 +113,10 @@ def plot_response_grid(
     return image
 
 
-def plot_compare_response(
-    pred_coef, target_coef, num_points=512, eps=1e-8, fs=44100, ax=None
-):
-
+def plot_compare_response(pred_coef, target_coef, num_points=1024, eps=1e-8, fs=44100, ax=None):
     w_pred, h_pred = signal.sosfreqz(pred_coef, worN=num_points, fs=fs)
     w_target, h_target = signal.sosfreqz(target_coef, worN=num_points, fs=fs)
-
     fig, ax = plt.subplots(nrows=2, ncols=1, figsize=(8, 8))
-
     mag_pred = 20 * np.log10(np.abs(h_pred.squeeze()) + 1e-8)
     mag_target = 20 * np.log10(np.abs(h_target.squeeze()) + 1e-8)
     ax[0].plot(w_target, mag_target, color="b", label="target")
@@ -136,7 +131,6 @@ def plot_compare_response(
     ax[0].spines["right"].set_visible(False)
     ax[0].spines["bottom"].set_visible(False)
     ax[0].spines["left"].set_visible(False)
-
     ang_pred = np.unwrap(np.angle(h_pred.squeeze()))
     ang_target = np.unwrap(np.angle(h_target.squeeze()))
     ax[1].plot(w_target, ang_target, color="b", label="target")
@@ -151,15 +145,12 @@ def plot_compare_response(
     ax[1].spines["right"].set_visible(False)
     ax[1].spines["bottom"].set_visible(False)
     ax[1].spines["left"].set_visible(False)
-
     buf = io.BytesIO()
     plt.savefig(buf, format="png")
     buf.seek(0)
     image = PIL.Image.open(buf)
-    image = ToTensor()(image)  # .unsqueeze(0)
-
+    image = ToTensor()(image)
     plt.close("all")
-
     return image
 
 
