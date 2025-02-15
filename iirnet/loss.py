@@ -6,63 +6,68 @@ import iirnet.signal as signal
 
 
 class LogMagFrequencyLoss(torch.nn.Module):
-    def __init__(self, priority=False):
+    def __init__(self, mag_weight=1.0, phase_weight=0.5, priority=False, freq_dependent=True):
         super(LogMagFrequencyLoss, self).__init__()
+        self.mag_weight = mag_weight
+        self.phase_weight = phase_weight
         self.priority = priority
+        self.freq_dependent = freq_dependent
 
     def forward(self, input, target, eps=1e-8):
-        bs = input.size(0)
-        loss = 0
+        if self.priority:
+            return self._priority_forward(input, target, eps)
+        else:
+            return self._standard_forward(input, target, eps)
 
-        if False:
-            for n in range(bs):
-                w, input_h = signal.sosfreqz(input[n, ...])
-                w, target_h = signal.sosfreqz(target[n, ...])
+    def _standard_forward(self, input, target, eps=1e-8):
+        w, input_h = signal.sosfreqz(input, log=False)
+        w, target_h = signal.sosfreqz(target, log=False)
 
-                input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
-                target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
+        # Magnitude processing
+        input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
+        target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
+        
+        # Phase processing
+        input_phs = torch.angle(input_h)
+        target_phs = torch.angle(target_h)
 
-                loss += torch.nn.functional.l1_loss(input_mag, target_mag)
-        elif self.priority:
-            # in this case, we compute the loss comparing the response as we increase the number
-            # of biquads in the cascade, this should encourage to use lower order filter.
+        # Frequency weighting
+        if self.freq_dependent:
+            freq_weights = 1.0 / (1.0 + w/np.pi)
+        else:
+            freq_weights = torch.ones_like(w)
 
-            # first compute the target response
-            w, target_h = signal.sosfreqz(target, log=False)
-            target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
-            target_phs = torch.angle(target_h) # atan2(imaginary_part, real_part) equivalent
+        # Weighted losses
+        mag_loss = torch.mean(freq_weights * (input_mag - target_mag)**2)
+        phs_loss = torch.mean(freq_weights * (input_phs - target_phs)**2)
 
-            n_sections = input.shape[1]
-            mag_loss = 0
-            phs_loss = 0
-            # now compute error with each group of biquads
-            for n in np.arange(n_sections, step=2):
+        return self.mag_weight * mag_loss + self.phase_weight * phs_loss
 
-                sos = input[:, 0 : n + 2, :]
-                w, input_h = signal.sosfreqz(sos, log=False)
-                input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
-                input_phs = torch.angle(input_h)
+    def _priority_forward(self, input, target, eps=1e-8):
+        # Keep existing priority implementation
+        w, target_h = signal.sosfreqz(target, log=False)
+        target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
+        target_phs = torch.angle(target_h)
 
+        n_sections = input.shape[1]
+        mag_loss = 0
+        phs_loss = 0
+        
+        for n in np.arange(n_sections, step=2):
+            sos = input[:, 0 : n + 2, :]
+            w, input_h = signal.sosfreqz(sos, log=False)
+            input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
+            input_phs = torch.angle(input_h)
+
+            if self.freq_dependent:
+                freq_weights = 1.0 / (1.0 + w/np.pi)
+                mag_loss += torch.mean(freq_weights * (input_mag - target_mag)**2)
+                phs_loss += torch.mean(freq_weights * (input_phs - target_phs)**2)
+            else:
                 mag_loss += torch.nn.functional.mse_loss(input_mag, target_mag)
                 phs_loss += torch.nn.functional.mse_loss(input_phs, target_phs)
 
-            loss = mag_loss + phs_loss
-
-        else:
-            w, input_h = signal.sosfreqz(input, log=False)
-            w, target_h = signal.sosfreqz(target, log=False)
-
-            input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
-            target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
-            input_phs = torch.angle(input_h)
-            target_phs = torch.angle(target_h)
-
-            mag_loss = torch.nn.functional.mse_loss(input_mag, target_mag)
-            phs_loss = torch.nn.functional.mse_loss(input_phs, target_phs)
-
-            loss = mag_loss + phs_loss
-
-        return loss
+        return self.mag_weight * mag_loss + self.phase_weight * phs_loss
 
 
 class FreqDomainLoss(torch.nn.Module):
