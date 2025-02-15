@@ -72,7 +72,7 @@ class IIRFilterDataset(torch.utils.data.Dataset):
         else:
             # generate random filter coefficients
             mag, phs, real, imag, sos = self.generate_filter(
-                self.num_points // 2,  # Use num_points // 2 for generation
+                self.num_points,  # Use num_points // 2 for generation
                 self.max_order,
             )
 
