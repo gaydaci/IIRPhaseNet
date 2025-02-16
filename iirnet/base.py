@@ -29,7 +29,7 @@ class IIRNet(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         mag_dB, mag_dB_norm, phs, real, imag, sos = batch
         pred_sos, _ = self(mag_dB_norm, phs)  # Pass both mag and phs
-        loss = self.magfreqzloss(pred_sos, sos)
+        loss = self.dbmagfreqzloss(pred_sos, sos)
 
         self.log(
             "train_loss",
@@ -44,7 +44,7 @@ class IIRNet(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         mag_dB, mag_dB_norm, phs, real, imag, sos = batch
         pred_sos, zpk = self(mag_dB_norm, phs)  # Pass both mag and phs
-        loss = self.magfreqzloss(pred_sos, sos)
+        loss = self.dbmagfreqzloss(pred_sos, sos)
         dB_MSE = self.dbmagfreqzloss(pred_sos, sos)
 
         self.log("val_loss", loss, on_step=False)
