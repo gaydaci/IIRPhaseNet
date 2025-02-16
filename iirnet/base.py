@@ -11,11 +11,17 @@ import iirnet.signal as signal
 class IIRNet(pl.LightningModule):
     """Base IIRNet module."""
 
-    def __init__(self, **kwargs):
+    def __init__(self, mag_weight=1.0, phase_weight=0.5, **kwargs):
         super(IIRNet, self).__init__()
-
+        
+        self.save_hyperparameters()
+        
+        # Update loss initialization with weights
         self.magfreqzloss = loss.FreqDomainLoss()
-        self.dbmagfreqzloss = loss.LogMagFrequencyLoss()
+        self.dbmagfreqzloss = loss.LogMagFrequencyLoss(
+            mag_weight=self.hparams.mag_weight,
+            phase_weight=self.hparams.phase_weight
+        )
 
     def forward(self, x):
         pass
@@ -61,12 +67,14 @@ class IIRNet(pl.LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        # --- model related ---
+        # Add weight parameters
+        parser.add_argument("--mag_weight", type=float, default=1.0)
+        parser.add_argument("--phase_weight", type=float, default=0.5)
+        # ...existing arguments...
         parser.add_argument("--num_points", type=int, default=512)
         parser.add_argument("--num_layers", type=int, default=4)
         parser.add_argument("--hidden_dim", type=int, default=128)
         parser.add_argument("--filter_order", type=int, default=2)
-        # --- training related ---
         parser.add_argument("--lr", type=float, default=1e-3)
-
+        
         return parser
