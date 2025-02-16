@@ -31,16 +31,19 @@ class LogMagFrequencyLoss(torch.nn.Module):
         input_phs = torch.angle(input_h)
         target_phs = torch.angle(target_h)
 
-        # Convert numpy to tensor for freq_weights
+        # Frequency-dependent weighting
         if self.freq_dependent:
             freq_weights = 1.0 / (1.0 + w/np.pi)
             freq_weights = torch.from_numpy(freq_weights).to(input_mag.device)
         else:
             freq_weights = torch.ones_like(input_mag)
 
-        # Now both are tensors
+        # Compute individual loss components
         mag_loss = torch.mean(freq_weights * (input_mag - target_mag)**2)
         phs_loss = torch.mean(freq_weights * (input_phs - target_phs)**2)
+
+        # DEBUG: print individual losses
+        print(f"DEBUG: mag_loss = {mag_loss.item():.6f}, phs_loss = {phs_loss.item():.6f}")
 
         return self.mag_weight * mag_loss + self.phase_weight * phs_loss
 
