@@ -1,7 +1,6 @@
 import torch
 import torch.fft
 import numpy as np
-
 import iirnet.signal as signal
 
 
@@ -20,35 +19,37 @@ class LogMagFrequencyLoss(torch.nn.Module):
             return self._standard_forward(input, target, eps)
 
     def _standard_forward(self, input, target, eps=1e-8):
+        # Compute frequency response for both input and target
         w, input_h = signal.sosfreqz(input, log=False)
         w, target_h = signal.sosfreqz(target, log=False)
 
-        # Magnitude processing
+        # Magnitude processing (converted to dB)
         input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
         target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
         
-        # Phase processing
+        # Phase processing (in radians)
         input_phs = torch.angle(input_h)
         target_phs = torch.angle(target_h)
 
         # Frequency-dependent weighting
         if self.freq_dependent:
-            freq_weights = 1.0 / (1.0 + w/np.pi)
+            freq_weights = 1.0 / (1.0 + w / np.pi)
             freq_weights = torch.from_numpy(freq_weights).to(input_mag.device)
         else:
             freq_weights = torch.ones_like(input_mag)
 
-        # Compute individual loss components
-        mag_loss = torch.mean(freq_weights * (input_mag - target_mag)**2)
-        phs_loss = torch.mean(freq_weights * (input_phs - target_phs)**2)
+        # Compute individual loss components (raw values)
+        mag_loss = torch.mean(freq_weights * (input_mag - target_mag) ** 2)
+        phs_loss = torch.mean(freq_weights * (input_phs - target_phs) ** 2)
 
-        # DEBUG: print individual losses
+        # DEBUG: print individual losses (unweighted)
         print(f"DEBUG: mag_loss = {mag_loss.item():.6f}, phs_loss = {phs_loss.item():.6f}")
 
+        # Return the weighted sum of the losses
         return self.mag_weight * mag_loss + self.phase_weight * phs_loss
 
     def _priority_forward(self, input, target, eps=1e-8):
-        # Keep existing priority implementation
+        # Priority mode: accumulate loss over subsections of the filter
         w, target_h = signal.sosfreqz(target, log=False)
         target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
         target_phs = torch.angle(target_h)
@@ -56,7 +57,7 @@ class LogMagFrequencyLoss(torch.nn.Module):
         n_sections = input.shape[1]
         mag_loss = 0
         phs_loss = 0
-        
+
         for n in np.arange(n_sections, step=2):
             sos = input[:, 0 : n + 2, :]
             w, input_h = signal.sosfreqz(sos, log=False)
@@ -64,9 +65,10 @@ class LogMagFrequencyLoss(torch.nn.Module):
             input_phs = torch.angle(input_h)
 
             if self.freq_dependent:
-                freq_weights = 1.0 / (1.0 + w/np.pi)
-                mag_loss += torch.mean(freq_weights * (input_mag - target_mag)**2)
-                phs_loss += torch.mean(freq_weights * (input_phs - target_phs)**2)
+                freq_weights = 1.0 / (1.0 + w / np.pi)
+                freq_weights = torch.from_numpy(freq_weights).to(input_mag.device)
+                mag_loss += torch.mean(freq_weights * (input_mag - target_mag) ** 2)
+                phs_loss += torch.mean(freq_weights * (input_phs - target_phs) ** 2)
             else:
                 mag_loss += torch.nn.functional.mse_loss(input_mag, target_mag)
                 phs_loss += torch.nn.functional.mse_loss(input_phs, target_phs)
@@ -76,16 +78,9 @@ class LogMagFrequencyLoss(torch.nn.Module):
 
 class FreqDomainLoss(torch.nn.Module):
     def __init__(self):
-        super().__init__()
+        super(FreqDomainLoss, self).__init__()
 
-    def forward(
-        self,
-        input,
-        target,
-        eps=1e-8,
-        error="l2",
-    ):
-
+    def forward(self, input, target, eps=1e-8, error="l2"):
         _, input_h = signal.sosfreqz(input, log=False)
         _, target_h = signal.sosfreqz(target, log=False)
 
@@ -94,8 +89,8 @@ class FreqDomainLoss(torch.nn.Module):
         input_phs = torch.angle(input_h)
         target_phs = torch.angle(target_h)
 
-        input_mag_log = torch.log(input_mag)
-        target_mag_log = torch.log(target_mag)
+        input_mag_log = torch.log(input_mag + eps)
+        target_mag_log = torch.log(target_mag + eps)
 
         if error == "l1":
             mag_log_loss = torch.nn.functional.l1_loss(input_mag_log, target_mag_log)
@@ -110,20 +105,26 @@ class FreqDomainLoss(torch.nn.Module):
 
 
 class LogMagTargetFrequencyLoss(torch.nn.Module):
+    """
+    This loss is designed to compare the network's predicted frequency response
+    (both magnitude and phase) against provided target magnitude and phase values.
+    Note: The forward method now requires both target_mag and target_phs.
+    """
     def __init__(self, priority=False, use_dB=True, zero_mean=False):
         super(LogMagTargetFrequencyLoss, self).__init__()
         self.priority = priority
         self.use_dB = use_dB
         self.zero_mean = zero_mean
 
-    def forward(self, input_sos, target_mag, eps=1e-8):
-
+    def forward(self, input_sos, target_mag, target_phs, eps=1e-8):
+        # Compute the frequency response of the predicted filter
         w, input_h = signal.sosfreqz(input_sos, worN=target_mag.shape[-1], log=False)
         input_mag = 20 * torch.log10(signal.mag(input_h) + eps).float()
         input_phs = torch.angle(input_h)
 
+        # Compute losses: magnitude error and phase error (MSE)
         mag_loss = torch.nn.functional.mse_loss(input_mag, target_mag)
-        phs_loss = torch.nn.functional.mse_loss(input_phs, target_mag)
+        phs_loss = torch.nn.functional.mse_loss(input_phs, target_phs)
 
         return mag_loss + phs_loss
 
@@ -134,40 +135,18 @@ class ComplexLoss(torch.nn.Module):
         self.threshold = threshold
 
     def forward(self, input, target):
-        bs = input.size(0)
-        loss = 0
-
-        if False:
-            for n in range(bs):
-
-                input_sos = input[n, ...]
-                target_sos = target[n, ...]
-
-                if self.threshold is not None:
-                    input_sos = self.apply_threshold(input_sos)
-                    target_sos = self.apply_threshold(target_sos)
-
-                w, input_h = signal.sosfreqz(input_sos, log=True)
-                w, target_h = signal.sosfreqz(target_sos, log=True)
-
-                real_loss = torch.nn.functional.l1_loss(input_h.real, target_h.real)
-                imag_loss = torch.nn.functional.l1_loss(input_h.imag, target_h.imag)
-                loss += real_loss + imag_loss
-        else:
-            w, input_h = signal.sosfreqz(input, log=False)
-            w, target_h = signal.sosfreqz(target, log=False)
-            real_loss = torch.nn.functional.mse_loss(input_h.real, target_h.real)
-            imag_loss = torch.nn.functional.mse_loss(input_h.imag, target_h.imag)
-            phs_loss = torch.nn.functional.mse_loss(torch.angle(input_h), torch.angle(target_h))
-            loss = real_loss + imag_loss + phs_loss
-
+        # Compute loss on the complex frequency response
+        _, input_h = signal.sosfreqz(input, log=False)
+        _, target_h = signal.sosfreqz(target, log=False)
+        real_loss = torch.nn.functional.mse_loss(input_h.real, target_h.real)
+        imag_loss = torch.nn.functional.mse_loss(input_h.imag, target_h.imag)
+        phs_loss = torch.nn.functional.mse_loss(torch.angle(input_h), torch.angle(target_h))
+        loss = real_loss + imag_loss + phs_loss
         return torch.mean(loss)
 
     def apply_threshold(self, sos):
+        # Remove sections where the sum is below a threshold (if needed)
         out_sos = sos[sos.sum(-1) > self.threshold, :]
-
-        # check if all sections were removed
         if out_sos.size(0) == 0:
             out_sos = sos
-
         return out_sos
