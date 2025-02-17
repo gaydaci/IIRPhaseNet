@@ -64,6 +64,12 @@ class IIRNet(pl.LightningModule):
             "p": zpk[1].cpu(),
             "k": zpk[2].cpu(),
         }
+        # Return outputs and losses for callbacks
+        outputs.update({
+            "val_loss": loss,
+            "mag_loss": mag_loss,
+            "phase_loss": phs_loss
+        })
 
         return outputs
 
