@@ -19,40 +19,28 @@ class LogMagFrequencyLoss(torch.nn.Module):
         return loss
 
     def _standard_forward(self, input, target, eps=1e-8, return_components=False):
-        # Compute frequency response for both input and target
-        w, input_h = signal.sosfreqz(input, log=False)
-        w, target_h = signal.sosfreqz(target, log=False)
-
-        # Magnitude processing (converted to dB)
+        # Compute frequency response
+        w, input_h = signal.sosfreqz(input, worN=512)
+        w, target_h = signal.sosfreqz(target, worN=512)
+        
+        # Magnitude processing
         input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
         target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
         
-        # Phase processing with gradient-safe unwrapping
+        # Improved phase processing
         input_phs = torch.angle(input_h)
         target_phs = torch.angle(target_h)
         
-        # Detach before unwrapping, then reattach to computation graph
-        input_phs = torch.from_numpy(
-            np.unwrap(input_phs.detach().cpu().numpy())
-        ).to(input_phs.device).type_as(input_phs)
+        # Consistent phase unwrapping
+        input_phs = torch.from_numpy(np.unwrap(input_phs.detach().cpu().numpy())).to(input.device)
+        target_phs = torch.from_numpy(np.unwrap(target_phs.detach().cpu().numpy())).to(target.device)
         
-        target_phs = torch.from_numpy(
-            np.unwrap(target_phs.detach().cpu().numpy())
-        ).to(target_phs.device).type_as(target_phs)
+        # Scale losses
+        mag_scale = 1.0 / 128.0  # Normalize magnitude loss
+        phs_scale = 1.0 / np.pi  # Normalize phase loss
         
-        if input_h.requires_grad:
-            input_phs.requires_grad_()
-
-        # Frequency-dependent weighting
-        if self.freq_dependent:
-            freq_weights = 1.0 / (1.0 + w / np.pi)
-            freq_weights = torch.from_numpy(freq_weights).to(input_mag.device)
-        else:
-            freq_weights = torch.ones_like(input_mag)
-
-        # Compute individual loss components (raw values)
-        mag_loss = torch.mean(freq_weights * (input_mag - target_mag) ** 2)
-        phs_loss = torch.mean(freq_weights * (input_phs - target_phs) ** 2)
+        mag_loss = torch.mean((input_mag - target_mag)**2) * mag_scale
+        phs_loss = torch.mean((input_phs - target_phs)**2) * phs_scale
 
         # Debug prints (optional)
         print(f"DEBUG: raw mag_loss = {mag_loss.item():.6f}, raw phs_loss = {phs_loss.item():.6f}")
