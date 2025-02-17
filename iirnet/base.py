@@ -44,29 +44,34 @@ class IIRNet(pl.LightningModule):
         pred_sos, zpk = self(mag_dB_norm, phs)
         loss, (mag_loss, phs_loss) = self.dbmagfreqzloss(pred_sos, sos, return_components=True)
         
-        # Log validation loss properly
-        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("val_mag_loss", mag_loss, on_step=False, on_epoch=True)
-        self.log("val_phase_loss", phs_loss, on_step=False, on_epoch=True)
+        # Store losses for epoch computation
+        self.validation_step_mag_losses.append(mag_loss.detach())
+        self.validation_step_phase_losses.append(phs_loss.detach())
         
-        # Keep existing debug prints
+        # Log current step losses
+        self.log("val_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("val_mag_loss", mag_loss, on_step=True, on_epoch=True)
+        self.log("val_phase_loss", phs_loss, on_step=True, on_epoch=True)
+        
+        # Debug prints
         print(f"VAL DEBUG: Step {batch_idx}, Batch Size: {batch[0].shape[0]}")
         print(f"VAL DEBUG: Loss={loss.item():.6f}, Mag={mag_loss.item():.6f}, Phase={phs_loss.item():.6f}")
+        print(f"VAL DEBUG: Stored losses count: {len(self.validation_step_mag_losses)}")
         
-        return {"val_loss": loss}
+        return {"val_loss": loss, "mag_loss": mag_loss, "phase_loss": phs_loss}
 
-    def on_validation_epoch_end(self):
-        # Compute mean of stored metrics
-        avg_mag_loss = torch.stack(self.validation_step_mag_losses).mean()
-        avg_phase_loss = torch.stack(self.validation_step_phase_losses).mean()
-        
-        # Log epoch metrics
-        self.log("val_mag_loss_epoch", avg_mag_loss)
-        self.log("val_phase_loss_epoch", avg_phase_loss)
-        
-        # Clear lists for next epoch
+    def on_validation_epoch_start(self):
+        # Clear lists at start of validation
         self.validation_step_mag_losses = []
         self.validation_step_phase_losses = []
+
+    def on_validation_epoch_end(self):
+        if len(self.validation_step_mag_losses) > 0:
+            avg_mag_loss = torch.stack(self.validation_step_mag_losses).mean()
+            avg_phase_loss = torch.stack(self.validation_step_phase_losses).mean()
+            
+            self.log("val_mag_loss_epoch", avg_mag_loss)
+            self.log("val_phase_loss_epoch", avg_phase_loss)
 
     # add any model hyperparameters here
     @staticmethod
