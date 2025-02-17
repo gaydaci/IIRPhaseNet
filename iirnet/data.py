@@ -58,7 +58,7 @@ class IIRFilterDataset(torch.utils.data.Dataset):
 
         if self.precompute:
             self.examples = []
-            params = list(repeat((num_points // 2, max_order), times=self.num_examples))  # Use num_points // 2 for generation
+            params = list(repeat((num_points, max_order), times=self.num_examples)) 
             with multiprocessing.Pool(processes=1) as pool:
                 self.examples = pool.starmap(self.generate_filter, params)
             print(f"Generated {len(self.examples)} examples.")
@@ -72,7 +72,7 @@ class IIRFilterDataset(torch.utils.data.Dataset):
         else:
             # generate random filter coefficients
             mag, phs, real, imag, sos = self.generate_filter(
-                self.num_points,  # Use num_points // 2 for generation
+                self.num_points, 
                 self.max_order,
             )
 
