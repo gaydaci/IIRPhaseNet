@@ -21,7 +21,7 @@ class IIRFilterDataset(torch.utils.data.Dataset):
     def __init__(
         self,
         method="char_poly",
-        num_points=1024,  # Updated to 1024 to include both magnitude and phase
+        num_points=512, # Change back to 512
         max_order=10,
         min_order=None,
         num_examples=10000,
@@ -76,8 +76,10 @@ class IIRFilterDataset(torch.utils.data.Dataset):
                 self.max_order,
             )
 
+        # Normalize magnitude and phase
         mag_dB = 20 * np.log10(mag + 1e-8)
         mag_dB_norm = np.clip(mag_dB, a_min=-128, a_max=128) / 128
+        phs_norm = phs / np.pi  # Normalize phase to [-1, 1]
 
         # convert to float32 tensor
         mag_dB = torch.tensor(mag_dB.astype("float32"))
