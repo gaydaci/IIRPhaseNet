@@ -23,34 +23,45 @@ class LogMagFrequencyLoss(torch.nn.Module):
         w, input_h = signal.sosfreqz(input, worN=512)
         w, target_h = signal.sosfreqz(target, worN=512)
         
-        # Magnitude processing
+        # Magnitude processing with normalization
         input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
         target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
         
-        # Improved phase processing
+        # Phase processing with gradient-safe unwrapping
         input_phs = torch.angle(input_h)
         target_phs = torch.angle(target_h)
         
-        # Consistent phase unwrapping
-        input_phs = torch.from_numpy(np.unwrap(input_phs.detach().cpu().numpy())).to(input.device)
-        target_phs = torch.from_numpy(np.unwrap(target_phs.detach().cpu().numpy())).to(target.device)
+        input_phs_unwrap = torch.from_numpy(
+            np.unwrap(input_phs.detach().cpu().numpy())
+        ).to(input_phs.device).type_as(input_phs)
         
-        # Scale losses
-        mag_scale = 1.0 / 128.0  # Normalize magnitude loss
-        phs_scale = 1.0 / np.pi  # Normalize phase loss
+        target_phs_unwrap = torch.from_numpy(
+            np.unwrap(target_phs.detach().cpu().numpy())
+        ).to(target_phs.device).type_as(target_phs)
         
-        mag_loss = torch.mean((input_mag - target_mag)**2) * mag_scale
-        phs_loss = torch.mean((input_phs - target_phs)**2) * phs_scale
-
-        # Debug prints (optional)
-        print(f"DEBUG: raw mag_loss = {mag_loss.item():.6f}, raw phs_loss = {phs_loss.item():.6f}")
-
+        if input_h.requires_grad:
+            input_phs_unwrap.requires_grad_()
+        
+        # Compute raw losses
+        raw_mag_loss = torch.mean((input_mag - target_mag)**2)
+        raw_phs_loss = torch.mean((input_phs_unwrap - target_phs_unwrap)**2)
+        
+        # Scale losses for balanced learning
+        mag_scale = 1.0 / (128.0**2)  # Normalize by max dB range squared
+        phs_scale = 1.0 / (np.pi**2)  # Normalize by π²
+        
+        mag_loss = raw_mag_loss * mag_scale
+        phs_loss = raw_phs_loss * phs_scale
+        
+        # Debug logging (will show in terminal)
+        print(f"DEBUG: raw_mag={raw_mag_loss:.6f}, scaled_mag={mag_loss:.6f}")
+        print(f"DEBUG: raw_phs={raw_phs_loss:.6f}, scaled_phs={phs_loss:.6f}")
+        
         final_loss = self.mag_weight * mag_loss + self.phase_weight * phs_loss
-
+        
         if return_components:
             return final_loss, (mag_loss, phs_loss)
-        else:
-            return final_loss
+        return final_loss
 
     def _priority_forward(self, input, target, eps=1e-8, return_components=False):
         # Priority mode: accumulate loss over subsections of the filter
