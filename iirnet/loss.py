@@ -27,14 +27,22 @@ class LogMagFrequencyLoss(torch.nn.Module):
         input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
         target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
         
-        # Phase processing (in radians)
+        # Phase processing with gradient-safe unwrapping
         input_phs = torch.angle(input_h)
         target_phs = torch.angle(target_h)
         
-        # Unwrap phases
-        input_phs = torch.from_numpy(np.unwrap(input_phs.cpu().numpy())).to(input_phs.device)
-        target_phs = torch.from_numpy(np.unwrap(target_phs.cpu().numpy())).to(target_phs.device)
+        # Detach before unwrapping, then reattach to computation graph
+        input_phs = torch.from_numpy(
+            np.unwrap(input_phs.detach().cpu().numpy())
+        ).to(input_phs.device).type_as(input_phs)
         
+        target_phs = torch.from_numpy(
+            np.unwrap(target_phs.detach().cpu().numpy())
+        ).to(target_phs.device).type_as(target_phs)
+        
+        if input_h.requires_grad:
+            input_phs.requires_grad_()
+
         # Frequency-dependent weighting
         if self.freq_dependent:
             freq_weights = 1.0 / (1.0 + w / np.pi)
