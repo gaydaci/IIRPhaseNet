@@ -40,9 +40,20 @@ class IIRNet(pl.LightningModule):
         mag_dB, mag_dB_norm, phs, real, imag, sos = batch
         pred_sos, zpk = self(mag_dB_norm, phs)
         loss, (mag_loss, phs_loss) = self.dbmagfreqzloss(pred_sos, sos, return_components=True)
-        self.log("val_loss", loss, on_step=False)
-        self.log("val_mag_loss", mag_loss, on_step=False)
-        self.log("val_phase_loss", phs_loss, on_step=False)
+        
+        # Debug validation losses
+        print(f"VAL DEBUG: Step {batch_idx}")
+        print(f"VAL DEBUG: Raw mag_loss={mag_loss.item():.6f}")
+        print(f"VAL DEBUG: Raw phs_loss={phs_loss.item():.6f}")
+        
+        # Log with sync_dist for proper multi-GPU handling
+        self.log("val_loss", loss, on_step=False, on_epoch=True, sync_dist=True)
+        self.log("val_mag_loss", mag_loss, on_step=False, on_epoch=True, sync_dist=True)
+        self.log("val_phase_loss", phs_loss, on_step=False, on_epoch=True, sync_dist=True)
+        
+        # Add per-step logging for debugging
+        self.log("val_mag_loss_step", mag_loss, on_step=True, on_epoch=False)
+        self.log("val_phase_loss_step", phs_loss, on_step=True, on_epoch=False)
 
         outputs = {
             "pred_sos": pred_sos.cpu(),
