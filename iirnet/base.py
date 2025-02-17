@@ -40,25 +40,32 @@ class IIRNet(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
+        # Unpack batch
         mag_dB, mag_dB_norm, phs, real, imag, sos = batch
+        
+        # Forward pass with both magnitude and phase
         pred_sos, zpk = self(mag_dB_norm, phs)
+        
+        # Get losses with components
         loss, (mag_loss, phs_loss) = self.dbmagfreqzloss(pred_sos, sos, return_components=True)
-        
-        # Store losses for epoch computation
-        self.validation_step_mag_losses.append(mag_loss.detach())
-        self.validation_step_phase_losses.append(phs_loss.detach())
-        
-        # Log current step losses
-        self.log("val_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
-        self.log("val_mag_loss", mag_loss, on_step=True, on_epoch=True)
-        self.log("val_phase_loss", phs_loss, on_step=True, on_epoch=True)
-        
-        # Debug prints
-        print(f"VAL DEBUG: Step {batch_idx}, Batch Size: {batch[0].shape[0]}")
-        print(f"VAL DEBUG: Loss={loss.item():.6f}, Mag={mag_loss.item():.6f}, Phase={phs_loss.item():.6f}")
-        print(f"VAL DEBUG: Stored losses count: {len(self.validation_step_mag_losses)}")
-        
-        return {"val_loss": loss, "mag_loss": mag_loss, "phase_loss": phs_loss}
+
+        # Log metrics without on_step to reduce overhead
+        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val_mag_loss", mag_loss, on_step=False, on_epoch=True)
+        self.log("val_phase_loss", phs_loss, on_step=False, on_epoch=True)
+
+        # move tensors to cpu for logging
+        outputs = {
+            "pred_sos": pred_sos.cpu(),
+            "sos": sos.cpu(),
+            "mag_dB": mag_dB.cpu(),
+            "phs": phs.cpu(),  # Log the phase response
+            "z": zpk[0].cpu(),
+            "p": zpk[1].cpu(),
+            "k": zpk[2].cpu(),
+        }
+
+        return outputs
 
     def on_validation_epoch_start(self):
         # Clear lists at start of validation
