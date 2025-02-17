@@ -24,7 +24,8 @@ class MLPModel(IIRNet):
         self.save_hyperparameters()
 
         self.layers = torch.nn.ModuleList()
-        input_dim = num_points  # 512 for magnitude + 512 for phase
+        input_dim = 2 * num_points  # 512 for magnitude + 512 for phase
+        print(f"DEBUG: Input dim = {input_dim}")  # Debug print
 
         for n in range(self.hparams.num_layers):
             in_features = self.hparams.hidden_dim if n != 0 else input_dim
@@ -48,8 +49,12 @@ class MLPModel(IIRNet):
             self.bn = torch.nn.BatchNorm1d(input_dim)
 
     def forward(self, mag, phs):
-        x = torch.cat((mag, phs), dim=1)  # Concatenate magnitude and phase
-
+        # Add shape validation
+        assert mag.shape[1] == 512, f"Expected mag shape [B,512], got {mag.shape}"
+        assert phs.shape[1] == 512, f"Expected phs shape [B,512], got {phs.shape}"
+        
+        x = torch.cat((mag, phs), dim=1)  # Creates [batch, 1024]
+        print(f"DEBUG: Concatenated input shape: {x.shape}")  # Debug print
         if self.hparams.normalization == "bn":
             x = self.bn(x)
 
