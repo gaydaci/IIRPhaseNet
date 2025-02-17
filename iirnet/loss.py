@@ -11,14 +11,15 @@ class LogMagFrequencyLoss(torch.nn.Module):
         self.priority = priority
         self.freq_dependent = freq_dependent
 
-    def forward(self, input, target, eps=1e-8):
+    def forward(self, input, target, eps=1e-8, return_components=False):
         if self.priority:
-            return self._priority_forward(input, target, eps)
+            loss = self._priority_forward(input, target, eps, return_components)
         else:
-            return self._standard_forward(input, target, eps)
+            loss = self._standard_forward(input, target, eps, return_components)
+        return loss
 
-    def _standard_forward(self, input, target, eps=1e-8):
-        # Compute frequency responses for both input and target
+    def _standard_forward(self, input, target, eps=1e-8, return_components=False):
+        # Compute frequency response for both input and target
         w, input_h = signal.sosfreqz(input, log=False)
         w, target_h = signal.sosfreqz(target, log=False)
 
@@ -36,34 +37,22 @@ class LogMagFrequencyLoss(torch.nn.Module):
             freq_weights = torch.from_numpy(freq_weights).to(input_mag.device)
         else:
             freq_weights = torch.ones_like(input_mag)
-        
-        # Debug: print statistics about the frequency weights
-        print("DEBUG: freq_weights min={:.6f}, max={:.6f}, mean={:.6f}".format(
-            freq_weights.min().item(),
-            freq_weights.max().item(),
-            freq_weights.mean().item()
-        ))
-        
-        # Compute raw loss components (without weighting)
-        raw_mag_loss = torch.mean((input_mag - target_mag) ** 2)
-        raw_phs_loss = torch.mean((input_phs - target_phs) ** 2)
-        print("DEBUG: raw_mag_loss={:.6f}, raw_phs_loss={:.6f}".format(
-            raw_mag_loss.item(), raw_phs_loss.item()
-        ))
-        
-        # Compute weighted loss components
-        weighted_mag_loss = torch.mean(freq_weights * (input_mag - target_mag) ** 2)
-        weighted_phs_loss = torch.mean(freq_weights * (input_phs - target_phs) ** 2)
-        print("DEBUG: weighted_mag_loss={:.6f}, weighted_phs_loss={:.6f}".format(
-            weighted_mag_loss.item(), weighted_phs_loss.item()
-        ))
-        
-        final_loss = self.mag_weight * weighted_mag_loss + self.phase_weight * weighted_phs_loss
-        print("DEBUG: final_loss={:.6f}".format(final_loss.item()))
-        
-        return final_loss
 
-    def _priority_forward(self, input, target, eps=1e-8):
+        # Compute individual loss components (raw values)
+        mag_loss = torch.mean(freq_weights * (input_mag - target_mag) ** 2)
+        phs_loss = torch.mean(freq_weights * (input_phs - target_phs) ** 2)
+
+        # Debug prints (optional)
+        print(f"DEBUG: raw mag_loss = {mag_loss.item():.6f}, raw phs_loss = {phs_loss.item():.6f}")
+
+        final_loss = self.mag_weight * mag_loss + self.phase_weight * phs_loss
+
+        if return_components:
+            return final_loss, (mag_loss, phs_loss)
+        else:
+            return final_loss
+
+    def _priority_forward(self, input, target, eps=1e-8, return_components=False):
         # Priority mode: accumulate loss over subsections of the filter
         w, target_h = signal.sosfreqz(target, log=False)
         target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
@@ -89,8 +78,10 @@ class LogMagFrequencyLoss(torch.nn.Module):
                 phs_loss += torch.nn.functional.mse_loss(input_phs, target_phs)
 
         final_loss = self.mag_weight * mag_loss + self.phase_weight * phs_loss
-        print("DEBUG (priority): final_loss={:.6f}".format(final_loss.item()))
-        return final_loss
+        if return_components:
+            return final_loss, (mag_loss, phs_loss)
+        else:
+            return final_loss
 
 
 class FreqDomainLoss(torch.nn.Module):

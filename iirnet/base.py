@@ -28,41 +28,31 @@ class IIRNet(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         mag_dB, mag_dB_norm, phs, real, imag, sos = batch
-        pred_sos, _ = self(mag_dB_norm, phs)  # Pass both mag and phs
-        loss = self.dbmagfreqzloss(pred_sos, sos)
-
-        self.log(
-            "train_loss",
-            loss,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-        )
+        pred_sos, _ = self(mag_dB_norm, phs)  # Forward pass
+        # Get the loss and its raw components
+        loss, (mag_loss, phs_loss) = self.dbmagfreqzloss(pred_sos, sos, return_components=True)
+        self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log("train_mag_loss", mag_loss, on_step=True, on_epoch=True)
+        self.log("train_phase_loss", phs_loss, on_step=True, on_epoch=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
         mag_dB, mag_dB_norm, phs, real, imag, sos = batch
-        pred_sos, zpk = self(mag_dB_norm, phs)  # Pass both mag and phs
-        
-        # Compute loss using phase-weighted setting
-        loss = self.dbmagfreqzloss(pred_sos, sos)
-        
-        # **Log the final computed loss instead of recomputing dB_MSE separately**
+        pred_sos, zpk = self(mag_dB_norm, phs)
+        loss, (mag_loss, phs_loss) = self.dbmagfreqzloss(pred_sos, sos, return_components=True)
         self.log("val_loss", loss, on_step=False)
-        self.log("dB_MSE", loss, on_step=True, on_epoch=True)
+        self.log("val_mag_loss", mag_loss, on_step=False)
+        self.log("val_phase_loss", phs_loss, on_step=False)
 
-        # move tensors to cpu for logging
         outputs = {
             "pred_sos": pred_sos.cpu(),
             "sos": sos.cpu(),
             "mag_dB": mag_dB.cpu(),
-            "phs": phs.cpu(),  # Log the phase response
+            "phs": phs.cpu(),
             "z": zpk[0].cpu(),
             "p": zpk[1].cpu(),
             "k": zpk[2].cpu(),
         }
-
         return outputs
 
     # add any model hyperparameters here
