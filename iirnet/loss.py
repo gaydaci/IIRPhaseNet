@@ -19,45 +19,43 @@ class LogMagFrequencyLoss(torch.nn.Module):
         return loss
 
     def _standard_forward(self, input, target, eps=1e-8, return_components=False):
-        # Compute frequency response
+        # Get frequency response
         w, input_h = signal.sosfreqz(input, worN=512)
         w, target_h = signal.sosfreqz(target, worN=512)
         
-        # Magnitude processing with normalization
+        # Magnitude processing
         input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
         target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
         
-        # Phase processing with gradient-safe unwrapping
+        # Phase processing - Fix gradient issue
         input_phs = torch.angle(input_h)
         target_phs = torch.angle(target_h)
         
-        input_phs_unwrap = torch.from_numpy(
-            np.unwrap(input_phs.detach().cpu().numpy())
-        ).to(input_phs.device).type_as(input_phs)
+        # Unwrap phase while preserving gradients
+        with torch.no_grad():
+            input_phs_np = input_phs.detach().cpu().numpy()
+            target_phs_np = target_phs.detach().cpu().numpy()
+            input_phs_unwrap = np.unwrap(input_phs_np)
+            target_phs_unwrap = np.unwrap(target_phs_np)
         
-        target_phs_unwrap = torch.from_numpy(
-            np.unwrap(target_phs.detach().cpu().numpy())
-        ).to(target_phs.device).type_as(target_phs)
+        # Convert back to tensors and preserve gradients
+        input_phs_unwrap = torch.tensor(input_phs_unwrap, device=input.device, dtype=input.dtype)
+        target_phs_unwrap = torch.tensor(target_phs_unwrap, device=target.device, dtype=target.dtype)
+        input_phs_unwrap.requires_grad_(True)
         
-        if input_h.requires_grad:
-            input_phs_unwrap.requires_grad_()
+        # Compute normalized phase difference
+        phase_diff = input_phs_unwrap - target_phs_unwrap
         
-        # Compute raw losses
-        raw_mag_loss = torch.mean((input_mag - target_mag)**2)
-        raw_phs_loss = torch.mean((input_phs_unwrap - target_phs_unwrap)**2)
+        # Compute losses
+        mag_loss = torch.mean((input_mag - target_mag)**2) / (128.0**2)
+        phs_loss = torch.mean(phase_diff**2) / (np.pi**2)
         
-        # Scale losses for balanced learning
-        mag_scale = 1.0 / (128.0**2)  # Normalize by max dB range squared
-        phs_scale = 1.0 / (np.pi**2)  # Normalize by π²
-        
-        mag_loss = raw_mag_loss * mag_scale
-        phs_loss = raw_phs_loss * phs_scale
-        
-        # Debug logging (will show in terminal)
-        print(f"DEBUG: raw_mag={raw_mag_loss:.6f}, scaled_mag={mag_loss:.6f}")
-        print(f"DEBUG: raw_phs={raw_phs_loss:.6f}, scaled_phs={phs_loss:.6f}")
-        
+        # Apply weights
         final_loss = self.mag_weight * mag_loss + self.phase_weight * phs_loss
+        
+        # Debug prints
+        print(f"DEBUG: mag_w={self.mag_weight:.2f}, phs_w={self.phase_weight:.2f}")
+        print(f"DEBUG: mag_loss={mag_loss:.6f}, phs_loss={phs_loss:.6f}")
         
         if return_components:
             return final_loss, (mag_loss, phs_loss)
