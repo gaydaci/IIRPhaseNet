@@ -22,6 +22,9 @@ class IIRNet(pl.LightningModule):
             mag_weight=self.hparams.mag_weight,
             phase_weight=self.hparams.phase_weight
         )
+        # Initialize lists to store validation metrics
+        self.validation_step_mag_losses = []
+        self.validation_step_phase_losses = []
 
     def forward(self, x):
         pass
@@ -41,30 +44,35 @@ class IIRNet(pl.LightningModule):
         pred_sos, zpk = self(mag_dB_norm, phs)
         loss, (mag_loss, phs_loss) = self.dbmagfreqzloss(pred_sos, sos, return_components=True)
         
-        # Debug validation losses
-        print(f"VAL DEBUG: Step {batch_idx}")
+        # Store losses for epoch end computation
+        self.validation_step_mag_losses.append(mag_loss.detach())
+        self.validation_step_phase_losses.append(phs_loss.detach())
+        
+        # Log per-step metrics
+        self.log("val_mag_loss_step", mag_loss, on_step=True, prog_bar=True, 
+                 batch_size=batch[0].shape[0])
+        self.log("val_phase_loss_step", phs_loss, on_step=True, prog_bar=True,
+                 batch_size=batch[0].shape[0])
+        
+        # Debug prints
+        print(f"VAL DEBUG: Step {batch_idx}, Batch Size: {batch[0].shape[0]}")
         print(f"VAL DEBUG: Raw mag_loss={mag_loss.item():.6f}")
         print(f"VAL DEBUG: Raw phs_loss={phs_loss.item():.6f}")
         
-        # Log with sync_dist for proper multi-GPU handling
-        self.log("val_loss", loss, on_step=False, on_epoch=True, sync_dist=True)
-        self.log("val_mag_loss", mag_loss, on_step=False, on_epoch=True, sync_dist=True)
-        self.log("val_phase_loss", phs_loss, on_step=False, on_epoch=True, sync_dist=True)
-        
-        # Add per-step logging for debugging
-        self.log("val_mag_loss_step", mag_loss, on_step=True, on_epoch=False)
-        self.log("val_phase_loss_step", phs_loss, on_step=True, on_epoch=False)
+        return {"val_loss": loss, "val_mag_loss": mag_loss, "val_phase_loss": phs_loss}
 
-        outputs = {
-            "pred_sos": pred_sos.cpu(),
-            "sos": sos.cpu(),
-            "mag_dB": mag_dB.cpu(),
-            "phs": phs.cpu(),
-            "z": zpk[0].cpu(),
-            "p": zpk[1].cpu(),
-            "k": zpk[2].cpu(),
-        }
-        return outputs
+    def on_validation_epoch_end(self):
+        # Compute mean of stored metrics
+        avg_mag_loss = torch.stack(self.validation_step_mag_losses).mean()
+        avg_phase_loss = torch.stack(self.validation_step_phase_losses).mean()
+        
+        # Log epoch metrics
+        self.log("val_mag_loss_epoch", avg_mag_loss)
+        self.log("val_phase_loss_epoch", avg_phase_loss)
+        
+        # Clear lists for next epoch
+        self.validation_step_mag_losses = []
+        self.validation_step_phase_losses = []
 
     # add any model hyperparameters here
     @staticmethod
