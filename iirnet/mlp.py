@@ -137,12 +137,15 @@ class MLPModel(IIRNet):
             optimizer,
             milestones,
             gamma=0.1,
-            verbose=False,
+            verbose=True,  # Changed to True for debugging
         )
         return {
             "optimizer": optimizer,
-            "lr_scheduler": lr_scheduler,
-            "monitor": "val_loss",
+            "lr_scheduler": {
+                "scheduler": lr_scheduler,
+                "interval": "epoch",  # Added for clarity
+                "frequency": 1        # Added for clarity
+            }
         }
 
     # add any model hyperparameters here

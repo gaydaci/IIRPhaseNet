@@ -44,22 +44,16 @@ class IIRNet(pl.LightningModule):
         pred_sos, zpk = self(mag_dB_norm, phs)
         loss, (mag_loss, phs_loss) = self.dbmagfreqzloss(pred_sos, sos, return_components=True)
         
-        # Store losses for epoch end computation
-        self.validation_step_mag_losses.append(mag_loss.detach())
-        self.validation_step_phase_losses.append(phs_loss.detach())
+        # Log validation loss properly
+        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val_mag_loss", mag_loss, on_step=False, on_epoch=True)
+        self.log("val_phase_loss", phs_loss, on_step=False, on_epoch=True)
         
-        # Log per-step metrics
-        self.log("val_mag_loss_step", mag_loss, on_step=True, prog_bar=True, 
-                 batch_size=batch[0].shape[0])
-        self.log("val_phase_loss_step", phs_loss, on_step=True, prog_bar=True,
-                 batch_size=batch[0].shape[0])
-        
-        # Debug prints
+        # Keep existing debug prints
         print(f"VAL DEBUG: Step {batch_idx}, Batch Size: {batch[0].shape[0]}")
-        print(f"VAL DEBUG: Raw mag_loss={mag_loss.item():.6f}")
-        print(f"VAL DEBUG: Raw phs_loss={phs_loss.item():.6f}")
+        print(f"VAL DEBUG: Loss={loss.item():.6f}, Mag={mag_loss.item():.6f}, Phase={phs_loss.item():.6f}")
         
-        return {"val_loss": loss, "val_mag_loss": mag_loss, "val_phase_loss": phs_loss}
+        return {"val_loss": loss}
 
     def on_validation_epoch_end(self):
         # Compute mean of stored metrics
