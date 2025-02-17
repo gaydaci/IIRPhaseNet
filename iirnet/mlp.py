@@ -49,10 +49,13 @@ class MLPModel(IIRNet):
             self.bn = torch.nn.BatchNorm1d(input_dim)
 
     def forward(self, mag, phs):
-        # Add shape validation
-        assert mag.shape[1] == 512, f"Expected mag shape [B,512], got {mag.shape}"
-        assert phs.shape[1] == 512, f"Expected phs shape [B,512], got {phs.shape}"
+        # Add debug prints
+        print(f"DEBUG: mag shape={mag.shape}, phs shape={phs.shape}")
         
+        # Dynamic validation
+        assert mag.shape == phs.shape, f"Magnitude and phase shapes differ: {mag.shape} vs {phs.shape}"
+        assert mag.shape[1] == self.hparams.num_points, f"Expected {self.hparams.num_points} points, got {mag.shape[1]}"
+            
         x = torch.cat((mag, phs), dim=1)  # Creates [batch, 1024]
         print(f"DEBUG: Concatenated input shape: {x.shape}")  # Debug print
         if self.hparams.normalization == "bn":
