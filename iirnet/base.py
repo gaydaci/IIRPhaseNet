@@ -50,7 +50,7 @@ class IIRNet(pl.LightningModule):
         
         # **Log the final computed loss instead of recomputing dB_MSE separately**
         self.log("val_loss", loss, on_step=False)
-        self.log("dB_MSE", loss, on_step=False)  # Log same loss instead of recomputing!
+        self.log("dB_MSE", loss, on_step=True, on_epoch=True)
 
         # move tensors to cpu for logging
         outputs = {
