@@ -44,11 +44,13 @@ class IIRNet(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         mag_dB, mag_dB_norm, phs, real, imag, sos = batch
         pred_sos, zpk = self(mag_dB_norm, phs)  # Pass both mag and phs
+        
+        # Compute loss using phase-weighted setting
         loss = self.dbmagfreqzloss(pred_sos, sos)
-        dB_MSE = self.dbmagfreqzloss(pred_sos, sos)
-
+        
+        # **Log the final computed loss instead of recomputing dB_MSE separately**
         self.log("val_loss", loss, on_step=False)
-        self.log("dB_MSE", dB_MSE, on_step=False)
+        self.log("dB_MSE", loss, on_step=False)  # Log same loss instead of recomputing!
 
         # move tensors to cpu for logging
         outputs = {
