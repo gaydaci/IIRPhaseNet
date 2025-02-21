@@ -90,7 +90,7 @@ class MLPModel(IIRNet):
         )
 
         # ensure zeros inside unit circle
-        # zero = torch.complex(zero_real, zero_imag)
+        zero = torch.complex(zero_real, zero_imag)
         # zero = (
         #     (1 - self.hparams.eps)
         #     * zero
