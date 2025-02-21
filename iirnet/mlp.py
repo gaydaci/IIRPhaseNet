@@ -90,13 +90,13 @@ class MLPModel(IIRNet):
         )
 
         # ensure zeros inside unit circle
-        zero = torch.complex(zero_real, zero_imag)
-        zero = (
-            (1 - self.hparams.eps)
-            * zero
-            * torch.tanh(zero.abs())
-            / (zero.abs().clamp(self.hparams.eps))
-        )
+        # zero = torch.complex(zero_real, zero_imag)
+        # zero = (
+        #     (1 - self.hparams.eps)
+        #     * zero
+        #     * torch.tanh(zero.abs())
+        #     / (zero.abs().clamp(self.hparams.eps))
+        # )
 
         # Fix filter gain to be 1
         # b0 = torch.ones(g.shape, device=g.device)
