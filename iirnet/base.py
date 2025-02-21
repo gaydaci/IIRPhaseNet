@@ -17,7 +17,10 @@ class IIRNet(pl.LightningModule):
         self.save_hyperparameters()
         
         # Update loss initialization with weights
-        self.magfreqzloss = loss.FreqDomainLoss()
+        self.magfreqzloss = loss.FreqDomainLoss(
+            mag_weight=self.hparams.mag_weight,
+            phase_weight=self.hparams.phase_weight
+        )
         self.dbmagfreqzloss = loss.LogMagFrequencyLoss(
             mag_weight=self.hparams.mag_weight,
             phase_weight=self.hparams.phase_weight
