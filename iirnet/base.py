@@ -11,20 +11,33 @@ import iirnet.signal as signal
 class IIRNet(pl.LightningModule):
     """Base IIRNet module."""
 
-    def __init__(self, mag_weight=1.0, phase_weight=0.5, **kwargs):
+    def __init__(self, mag_weight=1.0, phase_weight=0.5, use_complex_loss=False, **kwargs):
         super(IIRNet, self).__init__()
         
         self.save_hyperparameters()
         
-        # Update loss initialization with weights
-        self.magfreqzloss = loss.FreqDomainLoss(
-            mag_weight=self.hparams.mag_weight,
-            phase_weight=self.hparams.phase_weight
-        )
-        self.dbmagfreqzloss = loss.LogMagFrequencyLoss(
-            mag_weight=self.hparams.mag_weight,
-            phase_weight=self.hparams.phase_weight
-        )
+        # Initialize appropriate loss function based on config
+        if self.hparams.use_complex_loss:
+            print("Using complex plane optimization loss (no manual weights needed)")
+            self.dbmagfreqzloss = loss.ComplexPlaneOptimizationLoss(
+                log_domain=True,
+                normalize=True
+            )
+            self.magfreqzloss = loss.ComplexPlaneOptimizationLoss(
+                log_domain=False,
+                normalize=True
+            )
+        else:
+            print(f"Using weighted loss with mag_weight={self.hparams.mag_weight}, phase_weight={self.hparams.phase_weight}")
+            self.dbmagfreqzloss = loss.LogMagFrequencyLoss(
+                mag_weight=self.hparams.mag_weight,
+                phase_weight=self.hparams.phase_weight
+            )
+            self.magfreqzloss = loss.FreqDomainLoss(
+                mag_weight=self.hparams.mag_weight,
+                phase_weight=self.hparams.phase_weight
+            )
+        
         # Initialize lists to store validation metrics
         self.validation_step_mag_losses = []
         self.validation_step_phase_losses = []
@@ -99,5 +112,8 @@ class IIRNet(pl.LightningModule):
         parser.add_argument("--hidden_dim", type=int, default=128)
         parser.add_argument("--filter_order", type=int, default=2)
         parser.add_argument("--lr", type=float, default=1e-3)
+        # new argument for complex loss
+        parser.add_argument("--use_complex_loss", action="store_true",
+                            help="Use complex plane optimization instead of weighted mag/phase")       
         
         return parser
