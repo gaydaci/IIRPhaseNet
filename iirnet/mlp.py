@@ -20,7 +20,7 @@ class MLPModel(IIRNet):
         eps=1e-8,
         **kwargs,
     ):
-        super(MLPModel, self).__init__()
+        super(MLPModel, self).__init__(**kwargs)
         self.save_hyperparameters()
 
         self.layers = torch.nn.ModuleList()
