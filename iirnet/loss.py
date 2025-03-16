@@ -164,7 +164,8 @@ class ComplexPlaneOptimizationLoss(torch.nn.Module):
         target_phs = torch.angle(target_h)
             
         mag_loss = torch.nn.functional.mse_loss(input_mag, target_mag)
-        phs_loss = torch.nn.functional.mse_loss(input_phs, target_phs)
+        phase_diff = torch.remainder(input_phs - target_phs + np.pi, 2*np.pi) - np.pi
+        phs_loss = torch.mean(phase_diff**2)
         
         if return_components:
             return complex_loss, (mag_loss, phs_loss)
