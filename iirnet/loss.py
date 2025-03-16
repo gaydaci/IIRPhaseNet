@@ -145,16 +145,7 @@ class ComplexPlaneOptimizationLoss(torch.nn.Module):
             # Complex loss in log domain
             complex_loss = torch.nn.functional.mse_loss(input_log.real, target_log.real) + \
                            torch.nn.functional.mse_loss(input_log.imag, target_log.imag)
-                           
-            # For reporting: extract magnitude and phase components
-            input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
-            target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
-            input_phs = torch.angle(input_h)
-            target_phs = torch.angle(target_h)
-            
-            # Standard component losses (only for reporting)
-            mag_loss = torch.nn.functional.mse_loss(input_mag, target_mag)
-            phs_loss = torch.nn.functional.mse_loss(input_phs, target_phs)
+        
         else:
             # Direct complex domain
             if self.normalize:
@@ -166,14 +157,14 @@ class ComplexPlaneOptimizationLoss(torch.nn.Module):
             else:
                 complex_loss = torch.nn.functional.mse_loss(input_h, target_h)
             
-            # For reporting: extract magnitude and phase components
-            input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
-            target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
-            input_phs = torch.angle(input_h)
-            target_phs = torch.angle(target_h)
+        # For reporting: extract magnitude and phase components
+        input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
+        target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
+        input_phs = torch.angle(input_h)
+        target_phs = torch.angle(target_h)
             
-            mag_loss = torch.nn.functional.mse_loss(input_mag, target_mag)
-            phs_loss = torch.nn.functional.mse_loss(input_phs, target_phs)
+        mag_loss = torch.nn.functional.mse_loss(input_mag, target_mag)
+        phs_loss = torch.nn.functional.mse_loss(input_phs, target_phs)
         
         if return_components:
             return complex_loss, (mag_loss, phs_loss)
