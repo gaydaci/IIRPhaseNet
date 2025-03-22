@@ -22,10 +22,10 @@ grpcio==1.34.0
 idna==2.10
 importlib-metadata==3.3.0
 ipykernel==5.3.4
-ipython==7.16.1
+ipython==7.34.0
 ipython-genutils==0.2.0
 ipywidgets==7.5.1
-jedi==0.17.2
+jedi>=0.16
 Jinja2==2.11.2
 jsonschema==3.2.0
 jupyter==1.0.0
@@ -43,7 +43,7 @@ nbconvert==6.0.7
 nbformat==5.0.8
 nest-asyncio==1.4.2
 notebook==6.1.4
-numpy==2.2.4
+numpy>=1.22,<2.1
 oauthlib==3.1.0
 packaging==20.4
 pandocfilters==1.4.3
@@ -90,4 +90,3 @@ webencodings==0.5.1
 Werkzeug==1.0.1
 widgetsnbextension==3.5.1
 zipp==3.4.0
-tensorflow==2.19.0
