@@ -37,6 +37,7 @@ setup(
         "matplotlib",
         "wget",
         "numpy<2.1",
+        "jedi>=0.16",
     ],
     include_package_data=True,
     license="Apache License 2.0",
