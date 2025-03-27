@@ -18,7 +18,7 @@ class MLPModel(IIRNet):
         normalization="none",
         lr=3e-4,
         eps=1e-8,
-inject_layer=1,  # New parameter to specify where to inject phase data
+        inject_layer=1,  # New parameter to specify where to inject phase data
         **kwargs,
     ):
         super(MLPModel, self).__init__(**kwargs)
@@ -176,7 +176,7 @@ inject_layer=1,  # New parameter to specify where to inject phase data
         parser.add_argument("--hidden_dim", type=int, default=512)
         parser.add_argument("--model_order", type=int, default=10)
         parser.add_argument("--normalization", type=str, default="none")
-parser.add_argument("--inject_layer", type=int, default=1)  # New argument
+        parser.add_argument("--inject_layer", type=int, default=1)  # New argument
         # --- training related ---
         parser.add_argument("--lr", type=float, default=1e-3)
         parser.add_argument("--eps", type=float, default=1e-8)
