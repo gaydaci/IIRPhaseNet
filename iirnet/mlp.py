@@ -18,18 +18,24 @@ class MLPModel(IIRNet):
         normalization="none",
         lr=3e-4,
         eps=1e-8,
+inject_layer=1,  # New parameter to specify where to inject phase data
         **kwargs,
     ):
         super(MLPModel, self).__init__(**kwargs)
         self.save_hyperparameters()
 
         self.layers = torch.nn.ModuleList()
-        input_dim = 2 * num_points  # 512 for magnitude + 512 for phase
-        print(f"DEBUG: Input dim = {input_dim}")  # Debug print
+        input_dim = num_points  # Only magnitude data initially
+        print(f"DEBUG: Initial input dim = {input_dim}")  # Debug print
 
         for n in range(self.hparams.num_layers):
-            in_features = self.hparams.hidden_dim if n != 0 else input_dim
-            out_features = self.hparams.hidden_dim
+            if n == self.hparams.inject_layer:
+                # Adjust input dimension to include phase data at the injection layer
+                in_features = hidden_dim + num_points
+            else:
+                in_features = hidden_dim if n != 0 else input_dim
+
+            out_features = hidden_dim
             if n + 1 == self.hparams.num_layers:  # no activation at last layer
                 linear_layer = torch.nn.Linear(in_features, out_features)
                 self.layers.append(linear_layer)
@@ -56,12 +62,16 @@ class MLPModel(IIRNet):
         assert mag.shape == phs.shape, f"Magnitude and phase shapes differ: {mag.shape} vs {phs.shape}"
         assert mag.shape[1] == self.hparams.num_points, f"Expected {self.hparams.num_points} points, got {mag.shape[1]}"
             
-        x = torch.cat((mag, phs), dim=1)  # Creates [batch, 1024]
-       # print(f"DEBUG: Concatenated input shape: {x.shape}")  # Debug print
+        x = mag  # Start with magnitude data only
         if self.hparams.normalization == "bn":
             x = self.bn(x)
 
-        for layer in self.layers:
+        for i, layer in enumerate(self.layers):
+            if i == self.hparams.inject_layer:
+                # Inject phase data at the specified layer
+                x = torch.cat((x, phs), dim=1)  # Concatenate phase data
+                print(f"DEBUG: Injected phase data at layer {i}, new shape: {x.shape}")
+
             x = layer(x)
 
         # reshape into sos format (n_section, (b0, b1, b2, a0, a1, a2))
@@ -99,6 +109,14 @@ class MLPModel(IIRNet):
         # )
 
         # Fix filter gain to be 1
+# b0 = torch.ones(g.shape, device=g.device)
+        # b1 = -2 * zero_real
+        # b2 = ((zero_real ** 2) + (zero_imag ** 2))
+        # a0 = torch.ones(g.shape, device=g.device)
+        # a1 = -2 * pole.real
+        # a2 = (pole.real ** 2) + (pole.imag ** 2)
+
+        # Apply gain g to numerator by multiplying each coefficient by g
         # b0 = torch.ones(g.shape, device=g.device)
         # b1 = -2 * zero_real
         # b2 = ((zero_real ** 2) + (zero_imag ** 2))
@@ -158,6 +176,7 @@ class MLPModel(IIRNet):
         parser.add_argument("--hidden_dim", type=int, default=512)
         parser.add_argument("--model_order", type=int, default=10)
         parser.add_argument("--normalization", type=str, default="none")
+parser.add_argument("--inject_layer", type=int, default=1)  # New argument
         # --- training related ---
         parser.add_argument("--lr", type=float, default=1e-3)
         parser.add_argument("--eps", type=float, default=1e-8)
