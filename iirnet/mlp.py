@@ -16,6 +16,8 @@ class MLPModel(IIRNet):
         hidden_dim=8192,
         max_order=2,
         normalization="none",
+        enforce_min_phase=True,
+        gain_fix_one=True,
         lr=3e-4,
         eps=1e-8,
         **kwargs,
@@ -91,20 +93,22 @@ class MLPModel(IIRNet):
 
         # ensure zeros inside unit circle
         zero = torch.complex(zero_real, zero_imag)
-        # zero = (
-        #     (1 - self.hparams.eps)
-        #     * zero
-        #     * torch.tanh(zero.abs())
-        #     / (zero.abs().clamp(self.hparams.eps))
-        # )
+        if (self.hparams.enforce_min_phase):
+            zero = (
+                (1 - self.hparams.eps)
+                * zero
+                * torch.tanh(zero.abs())
+                / (zero.abs().clamp(self.hparams.eps))
+            )
 
         # Fix filter gain to be 1
-        # b0 = torch.ones(g.shape, device=g.device)
-        # b1 = -2 * zero_real
-        # b2 = ((zero_real ** 2) + (zero_imag ** 2))
-        # a0 = torch.ones(g.shape, device=g.device)
-        # a1 = -2 * pole.real
-        # a2 = (pole.real ** 2) + (pole.imag ** 2)
+        if (self.hparams.gain_fix_one):
+            b0 = torch.ones(g.shape, device=g.device)
+            b1 = -2 * zero_real
+            b2 = ((zero_real ** 2) + (zero_imag ** 2))
+            a0 = torch.ones(g.shape, device=g.device)
+            a1 = -2 * pole.real
+            a2 = (pole.real ** 2) + (pole.imag ** 2)
 
         # Apply gain g to numerator by multiplying each coefficient by g
         b0 = g
@@ -163,5 +167,7 @@ class MLPModel(IIRNet):
         parser.add_argument("--eps", type=float, default=1e-8)
         parser.add_argument("--priority_order", action="store_true")
         parser.add_argument("--experiment_name", type=str, default="experiment")
+        parser.add_argument("--enforce_min_phase", type=bool, default=True)
+        parser.add_argument("--gain_fix_one", type=bool, default=True)
 
         return parser
