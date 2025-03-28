@@ -160,10 +160,12 @@ class ComplexPlaneOptimizationLoss(torch.nn.Module):
         # For reporting: extract magnitude and phase components
         input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
         target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
+        input_mag_norm = torch.clamp(input_mag, min=-128, max=128) / 128
+        target_mag_norm = torch.clamp(target_mag, min=-128, max=128) / 128
         input_phs = torch.angle(input_h)
         target_phs = torch.angle(target_h)
             
-        mag_loss = torch.nn.functional.mse_loss(input_mag, target_mag)
+        mag_loss = torch.nn.functional.mse_loss(input_mag_norm, target_mag_norm)
         phase_diff = torch.remainder(input_phs - target_phs + np.pi, 2*np.pi) - np.pi
         phs_loss = torch.mean(phase_diff**2)
         
