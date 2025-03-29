@@ -11,8 +11,8 @@ class LogMagFrequencyLoss(torch.nn.Module):
 
     def forward(self, input, target, eps=1e-8, return_components=False):
         # Get frequency responses
-        w, input_h = signal.sosfreqz(input, worN=512)
-        w, target_h = signal.sosfreqz(target, worN=512)
+        w, input_h = signal.sosfreqz(input, worN=1024)
+        w, target_h = signal.sosfreqz(target, worN=1024)
         
         # Magnitude processing
         input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
