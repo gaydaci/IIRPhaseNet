@@ -47,21 +47,49 @@ class IIRNet(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         mag_dB, mag_dB_norm, phs, real, imag, sos = batch
-        # Use only the magnitude-only loss branch (like the original)
         pred_sos, _ = self(mag_dB_norm, phs)
-        loss = self.magfreqzloss(pred_sos, sos)
+        
+        # Get both the loss and components
+        if self.hparams.use_complex_loss:
+            loss, (mag_loss, phs_loss) = self.magfreqzloss(pred_sos, sos, return_components=True)
+        else:
+            loss = self.magfreqzloss(pred_sos, sos)
+            _, (mag_loss, phs_loss) = self.magfreqzloss(pred_sos, sos, return_components=True)
+        
+        # Log with better detail
         self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log("train_mag_loss", mag_loss, on_step=False, on_epoch=True)
+        self.log("train_phase_loss", phs_loss, on_step=False, on_epoch=True)
+        
         return loss
 
     def validation_step(self, batch, batch_idx):
         mag_dB, mag_dB_norm, phs, real, imag, sos = batch
-        # Forward pass using only the magnitude input as in the original
+        # Forward pass using magnitude and phase inputs
         pred_sos, zpk = self(mag_dB_norm, phs)
-        loss = self.magfreqzloss(pred_sos, sos)
-        dB_MSE = self.dbmagfreqzloss(pred_sos, sos)
         
+        # Get both the overall loss and component losses
+        if self.hparams.use_complex_loss:
+            # For complex loss, get the components explicitly
+            loss, (mag_loss, phs_loss) = self.magfreqzloss(pred_sos, sos, return_components=True)
+            dB_MSE, _ = self.dbmagfreqzloss(pred_sos, sos, return_components=True)
+        else:
+            # For weighted loss
+            loss = self.magfreqzloss(pred_sos, sos)
+            dB_MSE = self.dbmagfreqzloss(pred_sos, sos)
+            
+            # Extract components for consistent reporting
+            _, (mag_loss, phs_loss) = self.magfreqzloss(pred_sos, sos, return_components=True)
+        
+        # Store components for epoch-end statistics
+        self.validation_step_mag_losses.append(mag_loss)
+        self.validation_step_phase_losses.append(phs_loss)
+        
+        # Log metrics
         self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("dB_MSE", dB_MSE, on_step=False)
+        self.log("dB_MSE", dB_MSE, on_step=False, on_epoch=True)
+        self.log("val_mag_loss_step", mag_loss, on_step=True, on_epoch=False)
+        self.log("val_phase_loss_step", phs_loss, on_step=True, on_epoch=False)
         
         outputs = {
             "pred_sos": pred_sos.cpu(),
