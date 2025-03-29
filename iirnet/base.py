@@ -47,46 +47,30 @@ class IIRNet(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         mag_dB, mag_dB_norm, phs, real, imag, sos = batch
-        pred_sos, _ = self(mag_dB_norm, phs)  # Forward pass
-        # Get the loss and its raw components
-        loss, (mag_loss, phs_loss) = self.dbmagfreqzloss(pred_sos, sos, return_components=True)
+        # Use only the magnitude-only loss branch (like the original)
+        pred_sos, _ = self(mag_dB_norm, phs)
+        loss = self.magfreqzloss(pred_sos, sos)
         self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log("train_mag_loss", mag_loss, on_step=True, on_epoch=True)
-        self.log("train_phase_loss", phs_loss, on_step=True, on_epoch=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        # Unpack batch
         mag_dB, mag_dB_norm, phs, real, imag, sos = batch
-        
-        # Forward pass with both magnitude and phase
+        # Forward pass using only the magnitude input as in the original
         pred_sos, zpk = self(mag_dB_norm, phs)
+        loss = self.magfreqzloss(pred_sos, sos)
+        dB_MSE = self.dbmagfreqzloss(pred_sos, sos)
         
-        # Get losses with components
-        loss, (mag_loss, phs_loss) = self.dbmagfreqzloss(pred_sos, sos, return_components=True)
-
-        # Log metrics without on_step to reduce overhead
         self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("val_mag_loss", mag_loss, on_step=False, on_epoch=True)
-        self.log("val_phase_loss", phs_loss, on_step=False, on_epoch=True)
-
-        # move tensors to cpu for logging
+        self.log("dB_MSE", dB_MSE, on_step=False)
+        
         outputs = {
             "pred_sos": pred_sos.cpu(),
             "sos": sos.cpu(),
             "mag_dB": mag_dB.cpu(),
-            "phs": phs.cpu(),  # Log the phase response
             "z": zpk[0].cpu(),
             "p": zpk[1].cpu(),
             "k": zpk[2].cpu(),
         }
-        # Return outputs and losses for callbacks
-        outputs.update({
-            "val_loss": loss,
-            "mag_loss": mag_loss,
-            "phase_loss": phs_loss
-        })
-
         return outputs
 
     def on_validation_epoch_start(self):
