@@ -10,35 +10,34 @@ class LogMagFrequencyLoss(torch.nn.Module):
         self.phase_weight = phase_weight
 
     def forward(self, input, target, eps=1e-8, return_components=False):
-        # Get frequency responses
-        w, input_h = signal.sosfreqz(input, worN=1024)
-        w, target_h = signal.sosfreqz(target, worN=1024)
+        # Use the same frequency response settings as original
+        w, input_h = signal.sosfreqz(input, log=False)
+        w, target_h = signal.sosfreqz(target, log=False)
         
-        # Magnitude processing
+        # Magnitude processing (dB-scale)
         input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
         target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
         
-        # Early exit if phase_weight is 0 (magnitude-only mode)
+        # If phase loss is off, bypass phase computation entirely
         if self.phase_weight == 0:
             mag_loss = torch.nn.functional.mse_loss(input_mag, target_mag)
+            loss = self.mag_weight * mag_loss
             if return_components:
-                return mag_loss, (mag_loss, torch.tensor(0.0, device=mag_loss.device))
-            return mag_loss
+                return loss, (self.mag_weight * mag_loss, torch.tensor(0.0, device=loss.device))
+            return loss
         
-        # Phase processing only if needed
+        # Otherwise, compute phase responses and loss
         input_phs = torch.angle(input_h)
         target_phs = torch.angle(target_h)
         
-        # Compute losses
         mag_loss = torch.nn.functional.mse_loss(input_mag, target_mag)
         phs_loss = torch.nn.functional.mse_loss(input_phs, target_phs)
         
-        # Apply weights
-        final_loss = self.mag_weight * mag_loss + self.phase_weight * phs_loss
+        loss = self.mag_weight * mag_loss + self.phase_weight * phs_loss
         
         if return_components:
-            return final_loss, (mag_loss, phs_loss)
-        return final_loss
+            return loss, (self.mag_weight * mag_loss, self.phase_weight * phs_loss)
+        return loss
 
 
 class FreqDomainLoss(torch.nn.Module):
