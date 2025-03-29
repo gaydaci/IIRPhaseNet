@@ -46,7 +46,7 @@ class FreqDomainLoss(torch.nn.Module):
         self.mag_weight = mag_weight
         self.phase_weight = phase_weight
 
-    def forward(self, input, target, eps=1e-8, error="l2"):
+    def forward(self, input, target, eps=1e-8, error="l2", return_components=False):
         _, input_h = signal.sosfreqz(input, log=False)
         _, target_h = signal.sosfreqz(target, log=False)
 
@@ -70,6 +70,9 @@ class FreqDomainLoss(torch.nn.Module):
         # Apply weights
         final_loss = self.mag_weight * mag_log_loss + self.phase_weight * phs_loss
         
+        # Return components if requested
+        if return_components:
+            return final_loss, (mag_log_loss, phs_loss)
         return final_loss
 
 
