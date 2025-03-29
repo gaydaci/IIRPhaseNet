@@ -11,14 +11,21 @@ class LogMagFrequencyLoss(torch.nn.Module):
 
     def forward(self, input, target, eps=1e-8, return_components=False):
         # Get frequency responses
-        w, input_h = signal.sosfreqz(input, worN=512)
-        w, target_h = signal.sosfreqz(target, worN=512)
+        w, input_h = signal.sosfreqz(input, worN=1024)
+        w, target_h = signal.sosfreqz(target, worN=1024)
         
         # Magnitude processing
         input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
         target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
         
-        # Phase processing
+        # Early exit if phase_weight is 0 (magnitude-only mode)
+        if self.phase_weight == 0:
+            mag_loss = torch.nn.functional.mse_loss(input_mag, target_mag)
+            if return_components:
+                return mag_loss, (mag_loss, torch.tensor(0.0, device=mag_loss.device))
+            return mag_loss
+        
+        # Phase processing only if needed
         input_phs = torch.angle(input_h)
         target_phs = torch.angle(target_h)
         
@@ -28,10 +35,6 @@ class LogMagFrequencyLoss(torch.nn.Module):
         
         # Apply weights
         final_loss = self.mag_weight * mag_loss + self.phase_weight * phs_loss
-        
-        # Debug prints
-        print(f"DEBUG: mag_w={self.mag_weight:.2f}, phs_w={self.phase_weight:.2f}")
-        print(f"DEBUG: mag_loss={mag_loss:.6f}, phs_loss={phs_loss:.6f}")
         
         if return_components:
             return final_loss, (mag_loss, phs_loss)
