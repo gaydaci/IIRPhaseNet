@@ -3,6 +3,12 @@ import torch.fft
 import numpy as np
 import iirnet.signal as signal
 
+def phase_loss(input_phs, target_phs):
+    """Calculate phase loss accounting for phase wrapping at ±π"""
+    # Find shortest distance between angles on unit circle
+    phase_diff = torch.remainder(input_phs - target_phs + np.pi, 2*np.pi) - np.pi
+    return torch.mean(phase_diff**2)
+
 class LogMagFrequencyLoss(torch.nn.Module):
     def __init__(self, mag_weight=1.0, phase_weight=0.5):
         super(LogMagFrequencyLoss, self).__init__()
@@ -31,7 +37,7 @@ class LogMagFrequencyLoss(torch.nn.Module):
         target_phs = torch.angle(target_h)
         
         mag_loss = torch.nn.functional.mse_loss(input_mag, target_mag)
-        phs_loss = torch.nn.functional.mse_loss(input_phs, target_phs)
+        phs_loss = phase_loss(input_phs, target_phs)
         
         loss = self.mag_weight * mag_loss + self.phase_weight * phs_loss
         
@@ -63,7 +69,7 @@ class FreqDomainLoss(torch.nn.Module):
             phs_loss = torch.nn.functional.l1_loss(input_phs, target_phs)
         elif error == "l2":
             mag_log_loss = torch.nn.functional.mse_loss(input_mag_log, target_mag_log)
-            phs_loss = torch.nn.functional.mse_loss(input_phs, target_phs)
+            phs_loss = phase_loss(input_phs, target_phs)
         else:
             raise RuntimeError(f"Invalid `error`: {error}.")
 
@@ -131,9 +137,9 @@ class ComplexPlaneOptimizationLoss(torch.nn.Module):
         self.normalize = normalize
         
     def forward(self, input, target, eps=1e-8, return_components=False):
-        # Get frequency responses
-        w, input_h = signal.sosfreqz(input, worN=512)
-        w, target_h = signal.sosfreqz(target, worN=512)
+        # Get frequency responses with consistent settings
+        w, input_h = signal.sosfreqz(input, log=False)
+        w, target_h = signal.sosfreqz(target, log=False)
         
         # For reporting: extract magnitude and phase components
         input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
@@ -166,9 +172,9 @@ class ComplexPlaneOptimizationLoss(torch.nn.Module):
             imag_loss = torch.nn.functional.mse_loss(input_norm.imag, target_norm.imag)
             complex_loss = real_loss + imag_loss
         
-        # Calculate separate mag/phase losses for reporting
+        # Calculate standard component losses for reporting
         mag_loss = torch.nn.functional.mse_loss(input_mag, target_mag)
-        phs_loss = torch.nn.functional.mse_loss(input_phs, target_phs)
+        phs_loss = phase_loss(input_phs, target_phs)
         
         if return_components:
             return complex_loss, (mag_loss, phs_loss)
