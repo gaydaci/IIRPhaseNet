@@ -10,40 +10,78 @@ def phase_loss(input_phs, target_phs):
     return torch.mean(phase_diff**2)
 
 class LogMagFrequencyLoss(torch.nn.Module):
-    def __init__(self, mag_weight=1.0, phase_weight=0.5):
+    def __init__(self, priority=False):
         super(LogMagFrequencyLoss, self).__init__()
-        self.mag_weight = mag_weight
-        self.phase_weight = phase_weight
+        self.priority = priority
 
+    def forward(self, input, target, eps=1e-8):
+        bs = input.size(0)
+        loss = 0
+
+        if False:
+            for n in range(bs):
+                w, input_h = signal.sosfreqz(input[n, ...])
+                w, target_h = signal.sosfreqz(target[n, ...])
+
+                input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
+                target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
+
+                loss += torch.nn.functional.l1_loss(input_mag, target_mag)
+        elif self.priority:
+            # in this case, we compute the loss comparing the response as we increase the number
+            # of biquads in the cascade, this should encourage to use lower order filter.
+
+            # first compute the target response
+            w, target_h = signal.sosfreqz(target, log=False)
+            target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
+
+            n_sections = input.shape[1]
+            mag_loss = 0
+            # now compute error with each group of biquads
+            for n in np.arange(n_sections, step=2):
+
+                sos = input[:, 0 : n + 2, :]
+                w, input_h = signal.sosfreqz(sos, log=False)
+                input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
+
+                mag_loss += torch.nn.functional.mse_loss(input_mag, target_mag)
+
+        else:
+            w, input_h = signal.sosfreqz(input, log=False)
+            w, target_h = signal.sosfreqz(target, log=False)
+
+            input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
+            target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
+
+            mag_loss = torch.nn.functional.mse_loss(input_mag, target_mag)
+
+        return mag_loss
+
+class LogPhaseLoss(torch.nn.Module):
+    def __init__(self, priority=False):
+        super(LogPhaseLoss, self).__init__()
+        self.priority = priority
+    
     def forward(self, input, target, eps=1e-8, return_components=False):
-        # Use the same frequency response settings as original
+        # Get frequency responses
         w, input_h = signal.sosfreqz(input, log=False)
         w, target_h = signal.sosfreqz(target, log=False)
         
-        # Magnitude processing (dB-scale)
-        input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
-        target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
-        
-        # If phase loss is off, bypass phase computation entirely
-        if self.phase_weight == 0:
-            mag_loss = torch.nn.functional.mse_loss(input_mag, target_mag)
-            loss = self.mag_weight * mag_loss
-            if return_components:
-                return loss, (self.mag_weight * mag_loss, torch.tensor(0.0, device=loss.device))
-            return loss
-        
-        # Otherwise, compute phase responses and loss
+        # Extract phase angle in radians
         input_phs = torch.angle(input_h)
         target_phs = torch.angle(target_h)
         
-        mag_loss = torch.nn.functional.mse_loss(input_mag, target_mag)
-        phs_loss = phase_loss(input_phs, target_phs)
+        # Use the unwrapped phase loss calculation
+        phase_loss_val = phase_loss(input_phs, target_phs)
         
-        loss = self.mag_weight * mag_loss + self.phase_weight * phs_loss
+        # Also calculate magnitude metrics for reference/reporting
+        input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
+        target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
+        mag_loss = torch.nn.functional.mse_loss(input_mag, target_mag)
         
         if return_components:
-            return loss, (self.mag_weight * mag_loss, self.phase_weight * phs_loss)
-        return loss
+            return phase_loss_val, (mag_loss, phase_loss_val)
+        return phase_loss_val
 
 
 class FreqDomainLoss(torch.nn.Module):
@@ -129,53 +167,3 @@ class ComplexLoss(torch.nn.Module):
         if out_sos.size(0) == 0:
             out_sos = sos
         return out_sos
-
-class ComplexPlaneOptimizationLoss(torch.nn.Module):
-    def __init__(self, log_domain=True, normalize=True):
-        super(ComplexPlaneOptimizationLoss, self).__init__()
-        self.log_domain = log_domain
-        self.normalize = normalize
-        
-    def forward(self, input, target, eps=1e-8, return_components=False):
-        # Get frequency responses with consistent settings
-        w, input_h = signal.sosfreqz(input, log=False)
-        w, target_h = signal.sosfreqz(target, log=False)
-        
-        # For reporting: extract magnitude and phase components
-        input_mag = 20 * torch.log10(signal.mag(input_h) + eps)
-        target_mag = 20 * torch.log10(signal.mag(target_h) + eps)
-        input_phs = torch.angle(input_h)
-        target_phs = torch.angle(target_h)
-        
-        if self.log_domain:
-            # Log-complex domain
-            input_log = torch.log(input_h + eps)
-            target_log = torch.log(target_h + eps)
-            
-            # Split real and imaginary parts for MSE calculation
-            real_loss = torch.nn.functional.mse_loss(input_log.real, target_log.real)
-            imag_loss = torch.nn.functional.mse_loss(input_log.imag, target_log.imag)
-            complex_loss = real_loss + imag_loss
-        else:
-            # Direct complex domain
-            if self.normalize:
-                # Normalize to balance contributions
-                scale = torch.mean(torch.abs(target_h)) + eps
-                input_norm = input_h / scale
-                target_norm = target_h / scale
-            else:
-                input_norm = input_h
-                target_norm = target_h
-                
-            # Split real and imaginary parts for MSE calculation
-            real_loss = torch.nn.functional.mse_loss(input_norm.real, target_norm.real)
-            imag_loss = torch.nn.functional.mse_loss(input_norm.imag, target_norm.imag)
-            complex_loss = real_loss + imag_loss
-        
-        # Calculate standard component losses for reporting
-        mag_loss = torch.nn.functional.mse_loss(input_mag, target_mag)
-        phs_loss = phase_loss(input_phs, target_phs)
-        
-        if return_components:
-            return complex_loss, (mag_loss, phs_loss)
-        return complex_loss

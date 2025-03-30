@@ -19,14 +19,16 @@ class IIRNet(pl.LightningModule):
         # Initialize appropriate loss function based on config
         if self.hparams.use_complex_loss:
             print("Using complex plane optimization loss (no manual weights needed)")
-            self.dbmagfreqzloss = loss.ComplexPlaneOptimizationLoss(
+            self.dbmagfreqzloss = loss.LogMagFrequencyLoss(
                 log_domain=True,
                 normalize=True
             )
-            self.magfreqzloss = loss.ComplexPlaneOptimizationLoss(
+            self.magfreqzloss = loss.ComplexLoss(
                 log_domain=False,
                 normalize=True
             )
+            self.phsloss = loss.LogPhaseLoss()
+
         else:
             print(f"Using weighted loss with mag_weight={self.hparams.mag_weight}, phase_weight={self.hparams.phase_weight}")
             self.dbmagfreqzloss = loss.LogMagFrequencyLoss(
@@ -37,6 +39,7 @@ class IIRNet(pl.LightningModule):
                 mag_weight=self.hparams.mag_weight,
                 phase_weight=self.hparams.phase_weight
             )
+            self.phsloss = loss.LogPhaseLoss()
         
         # Initialize lists to store validation metrics
         self.validation_step_mag_losses = []
@@ -48,19 +51,8 @@ class IIRNet(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         mag_dB, mag_dB_norm, phs, real, imag, sos = batch
         pred_sos, _ = self(mag_dB_norm, phs)
-        
-        # Get both the loss and components
-        if self.hparams.use_complex_loss:
-            loss, (mag_loss, phs_loss) = self.magfreqzloss(pred_sos, sos, return_components=True)
-        else:
-            loss = self.magfreqzloss(pred_sos, sos)
-            _, (mag_loss, phs_loss) = self.magfreqzloss(pred_sos, sos, return_components=True)
-        
-        # Log with better detail
+        loss = self.magfreqzloss(pred_sos, sos)
         self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log("train_mag_loss", mag_loss, on_step=False, on_epoch=True)
-        self.log("train_phase_loss", phs_loss, on_step=False, on_epoch=True)
-        
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -73,6 +65,7 @@ class IIRNet(pl.LightningModule):
             # For complex loss, get the components explicitly
             loss, (mag_loss, phs_loss) = self.magfreqzloss(pred_sos, sos, return_components=True)
             dB_MSE, _ = self.dbmagfreqzloss(pred_sos, sos, return_components=True)
+            phs_RAD = self.phsloss(pred_sos, sos)
         else:
             # For weighted loss
             loss = self.magfreqzloss(pred_sos, sos)
@@ -80,7 +73,9 @@ class IIRNet(pl.LightningModule):
             
             # Extract components for consistent reporting
             _, (mag_loss, phs_loss) = self.magfreqzloss(pred_sos, sos, return_components=True)
-        
+            
+            phs_RAD = self.phsloss(pred_sos, sos)
+   
         # Store components for epoch-end statistics
         self.validation_step_mag_losses.append(mag_loss)
         self.validation_step_phase_losses.append(phs_loss)
@@ -88,9 +83,8 @@ class IIRNet(pl.LightningModule):
         # Log metrics
         self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
         self.log("dB_MSE", dB_MSE, on_step=False, on_epoch=True)
-        self.log("val_mag_loss_step", mag_loss, on_step=True, on_epoch=False)
-        self.log("val_phase_loss_step", phs_loss, on_step=True, on_epoch=False)
-        
+        self.log("phase_error_rad", phs_RAD, on_step=False, on_epoch=True)
+
         outputs = {
             "pred_sos": pred_sos.cpu(),
             "sos": sos.cpu(),
