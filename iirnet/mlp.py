@@ -16,7 +16,7 @@ class MLPModel(IIRNet):
         hidden_dim=8192,
         max_order=2,
         normalization="none",
-        enforce_min_phase=True,
+        enforce_min_phase=False,
         gain_fix_one=True,
         lr=3e-4,
         eps=1e-8,
@@ -167,7 +167,7 @@ class MLPModel(IIRNet):
         parser.add_argument("--eps", type=float, default=1e-8)
         parser.add_argument("--priority_order", action="store_true")
         parser.add_argument("--experiment_name", type=str, default="experiment")
-        parser.add_argument("--enforce_min_phase", type=bool, default=True)
+        parser.add_argument("--enforce_min_phase", type=bool, default=False)
         parser.add_argument("--gain_fix_one", type=bool, default=True)
 
         return parser

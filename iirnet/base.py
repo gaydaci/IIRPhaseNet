@@ -18,6 +18,10 @@ class IIRNet(pl.LightningModule):
         self.phsloss = loss.LogPhaseLoss()
         self.dbmagfreqzloss = loss.LogMagFrequencyLoss()
 
+        # Process boolean flags properly
+        if hasattr(self.hparams, 'no_min_phase') and self.hparams.no_min_phase:
+            self.hparams.enforce_min_phase = False
+
         # Initialize appropriate loss function based on config
         if self.hparams.use_complex_loss:
             print("Using complex plane optimization loss (no manual weights needed)")
