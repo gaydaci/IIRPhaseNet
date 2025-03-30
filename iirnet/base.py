@@ -15,31 +15,26 @@ class IIRNet(pl.LightningModule):
         super(IIRNet, self).__init__()
         
         self.save_hyperparameters()
-        
+        self.phsloss = loss.LogPhaseLoss()
+        self.dbmagfreqzloss = loss.LogMagFrequencyLoss()
+
         # Initialize appropriate loss function based on config
         if self.hparams.use_complex_loss:
             print("Using complex plane optimization loss (no manual weights needed)")
-            self.dbmagfreqzloss = loss.LogMagFrequencyLoss(
-                log_domain=True,
-                normalize=True
-            )
+
             self.magfreqzloss = loss.ComplexLoss(
                 log_domain=False,
                 normalize=True
             )
-            self.phsloss = loss.LogPhaseLoss()
+
 
         else:
             print(f"Using weighted loss with mag_weight={self.hparams.mag_weight}, phase_weight={self.hparams.phase_weight}")
-            self.dbmagfreqzloss = loss.LogMagFrequencyLoss(
-                mag_weight=self.hparams.mag_weight,
-                phase_weight=self.hparams.phase_weight
-            )
+
             self.magfreqzloss = loss.FreqDomainLoss(
                 mag_weight=self.hparams.mag_weight,
                 phase_weight=self.hparams.phase_weight
             )
-            self.phsloss = loss.LogPhaseLoss()
         
         # Initialize lists to store validation metrics
         self.validation_step_mag_losses = []
